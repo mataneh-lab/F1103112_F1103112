@@ -197,14 +197,27 @@ while($true) {
           </button>
         </div>
 
-        {/* Copy Script button */}
-        <button
-          onClick={copyToClipboard}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-900 text-white hover:bg-slate-800 active:scale-95 transition-all duration-150"
-        >
-          {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-          {copied ? "Copied!" : "Copy Script"}
-        </button>
+        {/* Action Buttons */}
+        <div className="flex gap-2">
+          {activeTab === "python" && (
+            <a
+              href="/api/download-agent"
+              download="hardware_collector.py"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-500 active:scale-95 transition-all duration-150 cursor-pointer"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              Download Script (.py)
+            </a>
+          )}
+
+          <button
+            onClick={copyToClipboard}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-900 text-white hover:bg-slate-800 active:scale-95 transition-all duration-150"
+          >
+            {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? "Copied!" : "Copy Script"}
+          </button>
+        </div>
       </div>
 
       {/* Code Textbox panel */}

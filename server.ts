@@ -186,6 +186,23 @@ app.get("/api/export-csv", (req, res) => {
   }
 });
 
+// 4.5. GET Download Py Agent Client Script
+app.get("/api/download-agent", (req, res) => {
+  const agentPath = path.join(process.cwd(), "hardware_collector.py");
+  if (!fs.existsSync(agentPath)) {
+    res.status(404).json({ error: "Collector client script was not found on server." });
+    return;
+  }
+  try {
+    const fileContent = fs.readFileSync(agentPath, "utf-8");
+    res.setHeader("Content-Type", "text/x-python");
+    res.setHeader("Content-Disposition", "attachment; filename=hardware_collector.py");
+    res.send(fileContent);
+  } catch (error) {
+    res.status(500).send("Error downloading python collector agent script.");
+  }
+});
+
 // 5. POST Optimize System Hardware Performance with Gemini
 app.post("/api/optimize-advice", async (req, res) => {
   try {
