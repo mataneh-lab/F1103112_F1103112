@@ -194,7 +194,18 @@ app.get("/api/download-agent", (req, res) => {
     return;
   }
   try {
-    const fileContent = fs.readFileSync(agentPath, "utf-8");
+    let fileContent = fs.readFileSync(agentPath, "utf-8");
+    
+    // Dynamically replace SERVER_URL with active incoming request origin
+    const protocol = req.headers["x-forwarded-proto"] || req.protocol || "http";
+    const host = req.headers["x-forwarded-host"] || req.get("host");
+    const activeOrigin = `${protocol}://${host}`;
+    
+    fileContent = fileContent.replace(
+      /SERVER_URL\s*=\s*["'][^"']*["']/g,
+      `SERVER_URL = "${activeOrigin}"`
+    );
+
     res.setHeader("Content-Type", "text/x-python");
     res.setHeader("Content-Disposition", "attachment; filename=hardware_collector.py");
     res.send(fileContent);
