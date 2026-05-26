@@ -1,0 +1,6 @@
+{
+  "name": "Computer Hardware Monitor",
+  "description": "A full-stack hardware monitoring panel. Track CPU and GPU temperatures/loads, log metric data to a CSV history file, set customizable threshold warning alarms, and get automated system performance optimization recommendations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
