@@ -11,11 +11,15 @@ interface AdvicePanelProps {
 }
 
 const getBaseUrl = () => {
-  const url = import.meta.env.VITE_API_URL || "";
+  let url = (import.meta.env.VITE_API_URL || "").trim();
   if (url && (url.startsWith("http://") || url.startsWith("https://"))) {
-    return url.endsWith("/") ? url.slice(0, -1) : url;
+    if (url.endsWith("/")) {
+      url = url.slice(0, -1);
+    }
+    return url.replace(/[^a-zA-Z0-9.:\/-]/g, "");
   }
-  return "";
+  const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+  return origin.replace(/[^a-zA-Z0-9.:\/-]/g, "");
 };
 const BASE_URL = getBaseUrl();
 

@@ -11,11 +11,15 @@ export default function InstructionPanel({ id }: InstructionPanelProps) {
 
   // Dynamically resolve application root endpoint
   const getBaseUrl = () => {
-    const url = import.meta.env.VITE_API_URL || "";
+    let url = (import.meta.env.VITE_API_URL || "").trim();
     if (url && (url.startsWith("http://") || url.startsWith("https://"))) {
-      return url.endsWith("/") ? url.slice(0, -1) : url;
+      if (url.endsWith("/")) {
+        url = url.slice(0, -1);
+      }
+      return url.replace(/[^a-zA-Z0-9.:\/-]/g, "");
     }
-    return typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+    const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+    return origin.replace(/[^a-zA-Z0-9.:\/-]/g, "");
   };
   const currentOrigin = getBaseUrl();
 
@@ -33,7 +37,7 @@ except ImportError:
     exit(1)
 
 # Target hosting server URL
-SERVER_URL = "${currentOrigin}"
+SERVER_URL = "${currentOrigin}".strip()
 
 print(f"Starting hardware polling collector pointing to {SERVER_URL}...")
 
@@ -93,7 +97,7 @@ while True:
 # Enforce TLS 1.2 to allow connection to modern secure HTTPS servers
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
 
-$serverUrl = "${currentOrigin}"
+$serverUrl = "${currentOrigin}".Trim()
 Write-Host "Monitoring starting. Posting metrics towards $serverUrl" -ForegroundColor Cyan
 
 while($true) {
