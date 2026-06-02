@@ -8,17 +8,39 @@ const app = express();
 const PORT = 3000;
 const CSV_FILE = path.join(process.cwd(), "metrics_history.csv");
 
-// Initialize Gemini SDK with telemetry header
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      "User-Agent": "aistudio-build",
-    },
-  },
-});
+// Lazy initializer for Gemini SDK to prevent server crash if GEMINI_API_KEY is undefined on startup
+let aiClient: GoogleGenAI | null = null;
+function getGeminiClient(): GoogleGenAI {
+  if (!aiClient) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY environment variable is required but missing.");
+    }
+    aiClient = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
+        },
+      },
+    });
+  }
+  return aiClient;
+}
 
 app.use(express.json());
+
+// Enable Custom-CORS configuration to allow external websites (like Vercel, localhost, etc.) to query this API
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  if (req.method === "OPTIONS") {
+    res.sendStatus(200);
+    return;
+  }
+  next();
+});
 
 // Helper function to read metrics from CSV safely
 function getMetricsFromCSV(): any[] {
@@ -276,7 +298,8 @@ Provide a high-quality JSON response matching the following structure perfectly.
   ]
 }`;
 
-    // Query Gemini
+    // Query Gemini using lazy-loaded client
+    const ai = getGeminiClient();
     const response = await ai.models.generateContent({
       model: "gemini-3.5-flash",
       contents: prompt,
@@ -332,6 +355,19 @@ async function startServer() {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
+
+  // Error handling middleware to catch any unhandled Express route/middleware errors
+  // layout as JSON instead of HTML to prevent unexpected token '<' JSON parsing errors on the client
+  app.use((err: any, req: any, res: any, next: any) => {
+    console.error("Unhandled API Server error:", err);
+    if (res.headersSent) {
+      return next(err);
+    }
+    res.status(err.status || 500).json({
+      error: err.message || "Internal Server Error",
+      stack: process.env.NODE_ENV !== "production" ? err.stack : undefined
+    });
+  });
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Hardware Server listening closely on http://0.0.0.0:${PORT}`);

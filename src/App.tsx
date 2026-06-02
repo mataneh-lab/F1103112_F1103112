@@ -22,6 +22,8 @@ import TrendCharts from "./components/TrendCharts";
 import InstructionPanel from "./components/InstructionPanel";
 import AdvicePanel from "./components/AdvicePanel";
 
+const BASE_URL = import.meta.env.VITE_API_URL || "";
+
 export default function App() {
   const [metrics, setMetrics] = useState<HardwareMetric[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,7 +62,7 @@ export default function App() {
   // Safe refetch handler from Express system logs
   const fetchMetricsData = useCallback(async () => {
     try {
-      const response = await fetch("/api/metrics");
+      const response = await fetch(`${BASE_URL}/api/metrics`);
       if (!response.ok) throw new Error("Connection failed");
       const data = await response.json();
       setMetrics(data.metrics || []);
@@ -83,7 +85,7 @@ export default function App() {
   const clearMetricsHistory = async () => {
     if (!window.confirm("Are you sure you want to completely clear the hardware metrics history?")) return;
     try {
-      const response = await fetch("/api/metrics", { method: "DELETE" });
+      const response = await fetch(`${BASE_URL}/api/metrics`, { method: "DELETE" });
       if (response.ok) {
         setMetrics([]);
         alert("Telemetry file cleared successfully.");
@@ -119,7 +121,7 @@ export default function App() {
     );
 
     try {
-      await fetch("/api/metrics", {
+      await fetch(`${BASE_URL}/api/metrics`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -310,7 +312,7 @@ export default function App() {
             {/* Quick-action Export CSV & Wipe buttons inside design block */}
             <div className="mt-2 space-y-2">
               <a
-                href="/api/export-csv"
+                href={`${BASE_URL}/api/export-csv`}
                 className="w-full bg-white text-slate-900 font-bold py-2 rounded-lg text-xs flex items-center justify-center gap-1.5 hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
