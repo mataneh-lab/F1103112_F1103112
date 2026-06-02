@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, MouseEvent } from "react";
 import {
   Cpu,
   Zap,
@@ -37,6 +37,7 @@ export default function App() {
   const [isSimulating, setIsSimulating] = useState(false);
   const [simulationSpeed, setSimulationSpeed] = useState<number>(3); // seconds
   const [activeSubTab, setActiveSubTab] = useState<"charts" | "ai" | "remote">("charts");
+  const [isLocalStorageMode, setIsLocalStorageMode] = useState(false);
   
   // Real-time alarm configuration triggers
   const [thresholds, setThresholds] = useState<Thresholds>({
@@ -66,19 +67,76 @@ export default function App() {
     localStorage.setItem("hardware_thresholds", JSON.stringify(updated));
   };
 
-  // Safe refetch handler from Express system logs
+  // Helper seed generator for offline/local standalone mode (e.g. Vercel)
+  const seedLocalStorageMetrics = useCallback((): HardwareMetric[] => {
+    const localList: HardwareMetric[] = [];
+    const now = Date.now();
+    const oneHourMs = 60 * 60 * 1000;
+    
+    for (let i = 24; i >= 1; i--) {
+      const timestamp = new Date(now - i * oneHourMs).toISOString();
+      const hourOfDay = new Date(now - i * oneHourMs).getHours();
+      const isWorkingHours = hourOfDay >= 9 && hourOfDay <= 18;
+      const isPeakGaming = hourOfDay >= 20 && hourOfDay <= 23;
+
+      let baseLoad = 15;
+      if (isWorkingHours) baseLoad = 40;
+      if (isPeakGaming) baseLoad = 75;
+
+      const cpuLoad = Math.max(5, Math.min(98, Math.round(baseLoad + (Math.random() * 15 - 7))));
+      const cpuTemp = Math.round(35 + (cpuLoad * 0.4) + (Math.random() * 4 - 2));
+      
+      const gpuLoad = Math.max(2, Math.min(100, Math.round((isPeakGaming ? 80 : 10) + (Math.random() * 12 - 6))));
+      const gpuTemp = Math.round(38 + (gpuLoad * 0.35) + (Math.random() * 4 - 2));
+      
+      const ramUsage = Math.max(20, Math.min(95, Math.round(30 + (cpuLoad * 0.25) + (Math.random() * 10 - 5))));
+
+      localList.push({
+        id: `seed_local_${24 - i}`,
+        timestamp,
+        cpuTemp,
+        cpuLoad,
+        gpuTemp,
+        gpuLoad,
+        ramUsage,
+        source: "simulated"
+      });
+    }
+    localStorage.setItem("local_metrics_history", JSON.stringify(localList));
+    return localList;
+  }, []);
+
+  // Safe refetch handler from Express system logs with localStorage fallback
   const fetchMetricsData = useCallback(async () => {
     try {
       const response = await fetch(`${BASE_URL}/api/metrics`);
       if (!response.ok) throw new Error("Connection failed");
       const data = await response.json();
-      setMetrics(data.metrics || []);
+      if (!data || !Array.isArray(data.metrics)) {
+        throw new Error("Invalid format");
+      }
+      setMetrics(data.metrics);
+      setIsLocalStorageMode(false);
     } catch (error) {
-      console.error("Failed fetching latest metric history:", error);
+      console.warn("Express server unreachable or standalone client environment. Enabling Local Browser Mode...", error);
+      setIsLocalStorageMode(true);
+      
+      const cached = localStorage.getItem("local_metrics_history");
+      if (cached) {
+        try {
+          setMetrics(JSON.parse(cached));
+        } catch (e) {
+          const seeded = seedLocalStorageMetrics();
+          setMetrics(seeded);
+        }
+      } else {
+        const seeded = seedLocalStorageMetrics();
+        setMetrics(seeded);
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [seedLocalStorageMetrics]);
 
   // Poll metrics on mount
   useEffect(() => {
@@ -88,21 +146,62 @@ export default function App() {
     return () => clearInterval(interval);
   }, [fetchMetricsData]);
 
-  // Clean wipe database command
+  // Clean wipe database command supporting local storage Mode
   const clearMetricsHistory = async () => {
     if (!window.confirm("Are you sure you want to completely clear the hardware metrics history?")) return;
+    
+    if (isLocalStorageMode) {
+      localStorage.removeItem("local_metrics_history");
+      setMetrics([]);
+      alert("Telemetry browser storage cleared successfully.");
+      return;
+    }
+
     try {
       const response = await fetch(`${BASE_URL}/api/metrics`, { method: "DELETE" });
       if (response.ok) {
         setMetrics([]);
         alert("Telemetry file cleared successfully.");
+      } else {
+        throw new Error("Failed to clear metrics");
       }
     } catch (e) {
-      console.error("Error wiping metrics history csv:", e);
+      console.error("Failed wiping cloud server csv, clearing local fallback cache instead:", e);
+      localStorage.removeItem("local_metrics_history");
+      setMetrics([]);
+      alert("Telemetry cache cleared locally.");
     }
   };
 
-  // Core Simulation sequence post simulator activity values
+  // Safe Local CSV Export constructor
+  const handleExportCSV = (e: MouseEvent<HTMLAnchorElement>) => {
+    if (isLocalStorageMode) {
+      e.preventDefault();
+      const headers = ["id", "timestamp", "cpuTemp", "cpuLoad", "gpuTemp", "gpuLoad", "ramUsage", "source"];
+      const rows = metrics.map(m => [
+        m.id,
+        m.timestamp,
+        m.cpuTemp,
+        m.cpuLoad,
+        m.gpuTemp,
+        m.gpuLoad,
+        m.ramUsage,
+        m.source
+      ].join(","));
+      
+      const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows].join("\n");
+      const encodedUri = encodeURI(csvContent);
+      
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", "hardware_metrics_history.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  // Core Simulation sequence posting to API or writing directly to localStorage fallback
   const triggerSimulationTelemetry = useCallback(async () => {
     // Generate organic temperature and load waves
     const timeFactor = Date.now() / 10000;
@@ -127,6 +226,34 @@ export default function App() {
       Math.min(97, Math.round(45 + Math.sin(timeFactor * 0.4) * 15 + (cpuLoad * 0.2) + Math.random() * 4))
     );
 
+    if (isLocalStorageMode) {
+      const newEntry: HardwareMetric = {
+        id: `m_local_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        timestamp: new Date().toISOString(),
+        cpuTemp,
+        cpuLoad,
+        gpuTemp,
+        gpuLoad,
+        ramUsage,
+        source: "simulated",
+      };
+      
+      const cached = localStorage.getItem("local_metrics_history");
+      let currentList: HardwareMetric[] = [];
+      if (cached) {
+        try {
+          currentList = JSON.parse(cached);
+        } catch (e) {
+          currentList = [];
+        }
+      }
+      
+      const updatedList = [...currentList, newEntry].slice(-100);
+      localStorage.setItem("local_metrics_history", JSON.stringify(updatedList));
+      setMetrics(updatedList);
+      return;
+    }
+
     try {
       await fetch(`${BASE_URL}/api/metrics`, {
         method: "POST",
@@ -142,9 +269,10 @@ export default function App() {
       });
       fetchMetricsData();
     } catch (e) {
-      console.error("Simulation endpoint unreachable:", e);
+      console.warn("Simulation POST failed, writing directly into local cache...", e);
+      setIsLocalStorageMode(true);
     }
-  }, [fetchMetricsData]);
+  }, [fetchMetricsData, isLocalStorageMode]);
 
   // Dynamic simulation timer hook
   const simulatorTimer = useRef<NodeJS.Timeout | null>(null);
@@ -236,7 +364,7 @@ export default function App() {
           <MetricCard
             id="gpu_metric_card"
             title="Graphics Processor"
-            subLabel="RTX 4080"
+            subLabel="RTX 3060"
             value={currentMetric ? currentMetric.gpuTemp : 45.0}
             unit="°C"
             loadValue={currentMetric ? currentMetric.gpuLoad : 8}
@@ -252,7 +380,7 @@ export default function App() {
           <MetricCard
             id="ram_metric_card"
             title="SRAM Space Cache"
-            subLabel="DDR5 Space"
+            subLabel="Memory Space"
             value={currentMetric ? (currentMetric.ramUsage * 0.16) : 3.8}
             unit="GB"
             loadValue={currentMetric ? currentMetric.ramUsage : 24}
@@ -272,7 +400,17 @@ export default function App() {
               <div className="space-y-3 font-mono">
                 <div>
                   <div className="text-[10px] text-slate-500 uppercase">Primary Data File</div>
-                  <div className="text-xs text-indigo-300 truncate">metrics_history.csv</div>
+                  <div className="text-xs text-indigo-300 truncate">
+                    {isLocalStorageMode ? "Browser localStorage cache" : "metrics_history.csv"}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-[10px] text-slate-500 uppercase">Connection Mode</div>
+                  <div className={`text-xs font-bold mt-0.5 flex items-center gap-1.5 ${isLocalStorageMode ? "text-amber-400" : "text-emerald-400"}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${isLocalStorageMode ? "bg-amber-400 animate-pulse" : "bg-emerald-400"}`} />
+                    {isLocalStorageMode ? "Standalone Local Mode" : "Cloud Server Connected"}
+                  </div>
                 </div>
                 
                 <div>
@@ -319,7 +457,8 @@ export default function App() {
             {/* Quick-action Export CSV & Wipe buttons inside design block */}
             <div className="mt-2 space-y-2">
               <a
-                href={`${BASE_URL}/api/export-csv`}
+                href={isLocalStorageMode ? "#" : `${BASE_URL}/api/export-csv`}
+                onClick={handleExportCSV}
                 className="w-full bg-white text-slate-900 font-bold py-2 rounded-lg text-xs flex items-center justify-center gap-1.5 hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
@@ -388,6 +527,8 @@ export default function App() {
               <AdvicePanel
                 id="gemini_advisor_segment"
                 thresholds={thresholds}
+                metrics={metrics}
+                isLocalStorageMode={isLocalStorageMode}
                 onRefreshTrigger={fetchMetricsData}
               />
             )}

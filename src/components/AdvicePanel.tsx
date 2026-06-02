@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { Sparkles, Loader2, Thermometer, ShieldCheck, RefreshCw, Cpu, Activity, Lightbulb } from "lucide-react";
-import { SystemAnalysis, Thresholds } from "../types";
+import { SystemAnalysis, Thresholds, HardwareMetric } from "../types";
 
 interface AdvicePanelProps {
   id: string;
   thresholds: Thresholds;
+  metrics?: HardwareMetric[];
+  isLocalStorageMode?: boolean;
   onRefreshTrigger?: () => void;
 }
 
@@ -17,7 +19,97 @@ const getBaseUrl = () => {
 };
 const BASE_URL = getBaseUrl();
 
-export default function AdvicePanel({ id, thresholds, onRefreshTrigger }: AdvicePanelProps) {
+// Local Rule-Based Hardware Optimization Advisor for Standalone Vercel environments
+const generateLocalOptimizationReport = (metricsList: HardwareMetric[], limits: Thresholds): SystemAnalysis => {
+  const recentMetrics = metricsList.slice(-30);
+  
+  if (recentMetrics.length === 0) {
+    return {
+      status: "optimal",
+      cpuSummary: "No metric log data found to analyze locally.",
+      gpuSummary: "Please capture or simulate metrics first.",
+      ramSummary: "No RAM metrics logged.",
+      recommendations: [
+        "Connect a local system collector script or start Simulation Mode to gather computer data.",
+        "Check temperature threshold alarms in dashboard settings."
+      ],
+      geminiAdvised: false
+    };
+  }
+
+  const avgCpuTemp = recentMetrics.reduce((sum, m) => sum + m.cpuTemp, 0) / recentMetrics.length;
+  const maxCpuTemp = Math.max(...recentMetrics.map(m => m.cpuTemp));
+  const avgCpuLoad = recentMetrics.reduce((sum, m) => sum + m.cpuLoad, 0) / recentMetrics.length;
+  
+  const avgGpuTemp = recentMetrics.reduce((sum, m) => sum + m.gpuTemp, 0) / recentMetrics.length;
+  const maxGpuTemp = Math.max(...recentMetrics.map(m => m.gpuTemp));
+  const avgGpuLoad = recentMetrics.reduce((sum, m) => sum + m.gpuLoad, 0) / recentMetrics.length;
+  
+  const avgRam = recentMetrics.reduce((sum, m) => sum + m.ramUsage, 0) / recentMetrics.length;
+  const maxRam = Math.max(...recentMetrics.map(m => m.ramUsage));
+
+  const cpuBreaches = recentMetrics.filter(m => m.cpuTemp > limits.cpuTemp).length;
+  const gpuBreaches = recentMetrics.filter(m => m.gpuTemp > limits.gpuTemp).length;
+  const ramBreaches = recentMetrics.filter(m => m.ramUsage > limits.ramUsage).length;
+
+  let status: "optimal" | "warning" | "critical" = "optimal";
+  if (cpuBreaches > 10 || gpuBreaches > 10 || maxCpuTemp > limits.cpuTemp + 10 || maxGpuTemp > limits.gpuTemp + 10) {
+    status = "critical";
+  } else if (cpuBreaches > 0 || gpuBreaches > 0 || ramBreaches > 0) {
+    status = "warning";
+  }
+
+  // CPU Assessment
+  let cpuSummary = `CPU values are safe: averaged ${avgCpuTemp.toFixed(1)}°C with workloads near ${avgCpuLoad.toFixed(1)}%. Core fan curves are operating correctly.`;
+  if (cpuBreaches > 0) {
+    cpuSummary = `CPU thermal breach found (${cpuBreaches} occurrences). Peak temp reached ${maxCpuTemp}°C (Exceeded threshold limit: ${limits.cpuTemp}°C). Thermal throttling detected!`;
+  }
+
+  // GPU Assessment
+  let gpuSummary = `GPU is stable: averaged ${avgGpuTemp.toFixed(1)}°C representing high rendering efficiency under ${avgGpuLoad.toFixed(1)}% load.`;
+  if (gpuBreaches > 0) {
+    gpuSummary = `GPU thermal alerts identified (${gpuBreaches} instances). Peak GPU temperature climbed to ${maxGpuTemp}°C (Threshold limit: ${limits.gpuTemp}°C). Check cooling intake.`;
+  }
+
+  // RAM Assessment
+  let ramSummary = `RAM memory allocations are within safety bounds. Current memory usage averages ${avgRam.toFixed(1)}% with peak loads around ${maxRam}%.`;
+  if (ramBreaches > 0) {
+    ramSummary = `Memory constraints detected! RAM peaked at ${maxRam}% capacity (${ramBreaches} occurrences above limit ${limits.ramUsage}%). Memory paging could impact performance.`;
+  }
+
+  // Tactical Recommendations array
+  const recommendations: string[] = [];
+  if (status === "critical") {
+    recommendations.push("Critical Thermal Spikes: Evaluate hardware heat sinks, clear exhaust vents, or replace degraded thermal paste immediately.");
+    recommendations.push("Configure aggressive PC fan curves (~85% duty cycles over 75°C core temps) using MSI Afterburner / BIOS controls.");
+    recommendations.push("Enable Windows CPU maximum power state limits (e.g., set maximum processor state to 99%) to lower core clock volts and temps.");
+  } else if (status === "warning") {
+    recommendations.push("Thermal Spikes: Ensure there is sufficient space behind PC intakes and exhausts to support unencumbered air passage.");
+    recommendations.push("Identify background power-hog processes using Windows Task Manager showing high idle CPU cycles.");
+    recommendations.push("Adjust performance sliders to 'Balanced Mode' in power settings to reduce continuous voltage cycles when gaming or computing at peak capacities.");
+  } else {
+    recommendations.push("Acoustic Tuning: Core thermals are perfectly safe. Consider lowering fan duties for quiet, stealth cooling operation.");
+    recommendations.push("Maintain current ambient environment factors and keep airflow filters clear of dust buildup.");
+    recommendations.push("Your memory and GPU load parameters are optimal. No throttling hazard is active.");
+  }
+  
+  if (ramBreaches > 0) {
+    recommendations.push("RAM Optimization: Close unnecessary browser workspaces, background visual launchers, and memory-heavy developer services.");
+  }
+  
+  recommendations.push("Run the included live simulator in background mode or download the hardware collector Python script to map real workstation metrics.");
+
+  return {
+    status,
+    cpuSummary,
+    gpuSummary,
+    ramSummary,
+    recommendations,
+    geminiAdvised: false
+  };
+};
+
+export default function AdvicePanel({ id, thresholds, metrics = [], isLocalStorageMode = false, onRefreshTrigger }: AdvicePanelProps) {
   const [loading, setLoading] = useState(false);
   const [advice, setAdvice] = useState<SystemAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +117,18 @@ export default function AdvicePanel({ id, thresholds, onRefreshTrigger }: Advice
   const fetchOptimizations = async () => {
     setLoading(true);
     setError(null);
+
+    // If explicitly running in local/standalone mode (like Vercel), calculate advice instantly in frontend
+    if (isLocalStorageMode) {
+      setTimeout(() => {
+        const localReport = generateLocalOptimizationReport(metrics, thresholds);
+        setAdvice(localReport);
+        setLoading(false);
+        if (onRefreshTrigger) onRefreshTrigger();
+      }, 800);
+      return;
+    }
+
     try {
       const response = await fetch(`${BASE_URL}/api/optimize-advice`, {
         method: "POST",
@@ -38,8 +142,10 @@ export default function AdvicePanel({ id, thresholds, onRefreshTrigger }: Advice
       setAdvice(data);
       if (onRefreshTrigger) onRefreshTrigger();
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || "Failed to contact Gemini Optimization Advisor.");
+      console.warn("API Optimizer request failed, computing with localized core processor rules...", err);
+      // Seamlessly fallback to localized analysis
+      const localReport = generateLocalOptimizationReport(metrics, thresholds);
+      setAdvice(localReport);
     } finally {
       setLoading(false);
     }
