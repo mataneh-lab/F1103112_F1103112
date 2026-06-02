@@ -52,7 +52,7 @@ function getMetricsFromCSV(): any[] {
     const lines = content.split("\n").filter(line => line.trim() !== "");
     if (lines.length <= 1) return []; // Only header
     
-    const headers = lines[0].split(",");
+    const headers = lines[0].split(",").map(h => h.trim());
     const list: any[] = [];
     
     for (let i = 1; i < lines.length; i++) {

@@ -10,7 +10,14 @@ export default function InstructionPanel({ id }: InstructionPanelProps) {
   const [copied, setCopied] = useState(false);
 
   // Dynamically resolve application root endpoint
-  const currentOrigin = import.meta.env.VITE_API_URL || (typeof window !== "undefined" ? window.location.origin : "http://localhost:3000");
+  const getBaseUrl = () => {
+    const url = import.meta.env.VITE_API_URL || "";
+    if (url && (url.startsWith("http://") || url.startsWith("https://"))) {
+      return url.endsWith("/") ? url.slice(0, -1) : url;
+    }
+    return typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+  };
+  const currentOrigin = getBaseUrl();
 
   // Code snippets
   const pythonScript = `import time

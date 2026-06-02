@@ -8,7 +8,14 @@ interface AdvicePanelProps {
   onRefreshTrigger?: () => void;
 }
 
-const BASE_URL = import.meta.env.VITE_API_URL || "";
+const getBaseUrl = () => {
+  const url = import.meta.env.VITE_API_URL || "";
+  if (url && (url.startsWith("http://") || url.startsWith("https://"))) {
+    return url.endsWith("/") ? url.slice(0, -1) : url;
+  }
+  return "";
+};
+const BASE_URL = getBaseUrl();
 
 export default function AdvicePanel({ id, thresholds, onRefreshTrigger }: AdvicePanelProps) {
   const [loading, setLoading] = useState(false);

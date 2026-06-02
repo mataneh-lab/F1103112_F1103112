@@ -22,7 +22,14 @@ import TrendCharts from "./components/TrendCharts";
 import InstructionPanel from "./components/InstructionPanel";
 import AdvicePanel from "./components/AdvicePanel";
 
-const BASE_URL = import.meta.env.VITE_API_URL || "";
+const getBaseUrl = () => {
+  const url = import.meta.env.VITE_API_URL || "";
+  if (url && (url.startsWith("http://") || url.startsWith("https://"))) {
+    return url.endsWith("/") ? url.slice(0, -1) : url;
+  }
+  return "";
+};
+const BASE_URL = getBaseUrl();
 
 export default function App() {
   const [metrics, setMetrics] = useState<HardwareMetric[]>([]);
