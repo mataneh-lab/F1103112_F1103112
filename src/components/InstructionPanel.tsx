@@ -90,6 +90,9 @@ while True:
   const powershellScript = `# Windows PowerShell background logging script
 # Open PowerShell (Run as Administrator to access WMI hardware sensor classes)
 
+# Enforce TLS 1.2 to allow connection to modern secure HTTPS servers
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+
 $serverUrl = "${currentOrigin}"
 Write-Host "Monitoring starting. Posting metrics towards $serverUrl" -ForegroundColor Cyan
 
@@ -135,10 +138,10 @@ while($true) {
     } | ConvertTo-Json
 
     try {
-        Invoke-RestMethod -Uri "$serverUrl/api/metrics" -Method Post -Body $body -ContentType "application/json" -TimeoutSec 5
+        Invoke-RestMethod -Uri "$serverUrl/api/metrics" -Method Post -Body $body -ContentType "application/json" -TimeoutSec 5 -UserAgent "Mozilla/5.0"
         Write-Host "Successfully Sent Metrics: Temp=$cpuTemp C, Load=$cpuLoad %, RAM=$ramUsage %" -ForegroundColor Green
     } catch {
-        Write-Host "Warning: Connection to panel blocked or server offline. Retrying..." -ForegroundColor Red
+        Write-Host "Warning: Connection to panel blocked or server offline. Details: $_" -ForegroundColor Red
     }
     
     Start-Sleep -Seconds 5
